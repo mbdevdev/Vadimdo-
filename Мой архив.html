@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мой архив</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f5f6fa;--card:#fff;--tx:#1b1f2a;--mut:#6b7385;--ac:#4f46e5;--acx:#fff;--bd:#e3e6ee;--err:#c62828}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#12141b;--card:#1b1e28;--tx:#eceef5;--mut:#9aa1b5;--ac:#818cf8;--acx:#12141b;--bd:#2a2e3d;--err:#ef9a9a}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#12141b;--card:#1b1e28;--tx:#eceef5;--mut:#9aa1b5;--ac:#818cf8;--acx:#12141b;--bd:#2a2e3d;--err:#ef9a9a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*:before,*:after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:20px 16px 60px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px}
+button,input{font:inherit;color:inherit}
+button{background:var(--ac);color:var(--acx);border:0;border-radius:10px;padding:9px 16px;cursor:pointer}
+button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+input[type=text],input[type=password],input[type=search]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);margin-bottom:10px}
+#login{max-width:360px;margin:12vh auto 0;text-align:center}
+#login h1{margin:0 0 4px;font-size:24px}
+.mut{color:var(--mut);font-size:13px}.err{color:var(--err);min-height:20px;font-size:13px}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:16px}
+header h1{font-size:20px;margin:0}
+#drop{border:2px dashed var(--bd);border-radius:14px;padding:26px;text-align:center;cursor:pointer;margin-bottom:14px}
+#drop.over{border-color:var(--ac);background:var(--card)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.tabs button{padding:6px 12px;font-size:13px}
+.tabs button:not(.on){background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--bd)}
+.item:last-child{border:0}
+.ic{font-size:26px;width:36px;text-align:center}
+.nm{flex:1;min-width:0}.nm b{display:block;overflow-wrap:anywhere;font-weight:600}
+.item button{padding:6px 10px;font-size:13px}
+audio{width:100%;margin-top:6px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div id="login" class="card hide">
+  <div style="font-size:40px">🗄️</div>
+  <h1 id="lt">Вход</h1>
+  <p class="mut" id="ls"></p>
+  <input id="u" type="text" placeholder="Имя" autocomplete="username">
+  <input id="p" type="password" placeholder="Пароль" autocomplete="current-password">
+  <div class="err" id="le"></div>
+  <button id="lb" style="width:100%">Войти</button>
+</div>
+
+<div class="wrap hide" id="app">
+  <header><h1>🗄️ Мой архив <span class="mut" id="who"></span></h1><button class="g" id="out">Выйти</button></header>
+  <div class="card">
+    <div id="drop"><b>Перетащите файлы сюда</b><br><span class="mut">или нажмите — презентации, документы, музыка, любые форматы (до 20 МБ)</span></div>
+    <input type="file" id="fi" multiple class="hide">
+    <div class="err" id="ue"></div>
+    <input type="search" id="q" placeholder="Поиск по названию…">
+    <div class="tabs" id="tabs"></div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const CATS={all:["Все","📁"],pres:["Презентации","📊"],doc:["Документы","📄"],music:["Музыка","🎵"],img:["Фото","🖼️"],vid:["Видео","🎬"],other:["Другое","📦"]};
+let db,assets,uid,coll,files=[],cat="all",user="";
+
+function kind(n,t){const e=(n.split(".").pop()||"").toLowerCase();
+ if(["ppt","pptx","key","odp"].includes(e))return"pres";
+ if(["doc","docx","pdf","txt","rtf","odt","xls","xlsx","csv","md","pages"].includes(e))return"doc";
+ if(t.startsWith("audio/")||["mp3","wav","flac","ogg","m4a","aac"].includes(e))return"music";
+ if(t.startsWith("image/"))return"img";if(t.startsWith("video/"))return"vid";return"other"}
+const size=b=>b>1048576?(b/1048576).toFixed(1)+" МБ":Math.max(1,Math.round(b/1024))+" КБ";
+async function hash(n,p){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("vault|"+n.toLowerCase()+"|"+p));
+ return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+
+function showLogin(first){$("app").classList.add("hide");$("login").classList.remove("hide");
+ $("lt").textContent=first?"Создайте доступ":"Вход";
+ $("ls").textContent=first?"Придумайте имя и пароль — они будут защищать ваш архив":"Введите имя и пароль";
+ $("lb").textContent=first?"Создать и войти":"Войти";$("lb").onclick=()=>auth(first)}
+
+const OK="8552d05bee5770d2282ab7053927b7eb625fab5a531662b7d7038b1fc0d07bb2";
+async function auth(){
+ const n=$("u").value.trim(),p=$("p").value;$("le").textContent="";
+ const h=await hash(n,p);
+ if(h===OK)enter("Вадим");else $("le").textContent="Неверное имя или пароль";
+}
+function enter(n){user=n;$("who").textContent="· "+n;sessionStorage.setItem("vs","1");$("login").classList.add("hide");$("app").classList.remove("hide");
+ coll.onSnapshot(s=>{files=s.docs.filter(d=>d.id.startsWith("f_")).map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.at-a.at);render()})}
+
+function render(){
+ const q=$("q").value.toLowerCase();
+ $("tabs").innerHTML="";
+ for(const k in CATS){const c=k==="all"?files.length:files.filter(f=>f.k===k).length;
+  const b=document.createElement("button");b.textContent=CATS[k][0]+" "+c;if(k===cat)b.className="on";b.onclick=()=>{cat=k;render()};$("tabs").appendChild(b)}
+ const L=$("list");L.innerHTML="";
+ const vis=files.filter(f=>(cat==="all"||f.k===cat)&&f.name.toLowerCase().includes(q));
+ if(!vis.length){L.innerHTML='<p class="mut" style="text-align:center;padding:20px">Здесь пока пусто</p>';return}
+ for(const f of vis){
+  const r=document.createElement("div");r.className="item";
+  r.innerHTML='<div class="ic"></div><div class="nm"><b></b><span class="mut"></span></div>';
+  r.querySelector(".ic").textContent=CATS[f.k][1];
+  r.querySelector("b").textContent=f.name;
+  r.querySelector(".mut").textContent=size(f.size)+" · "+new Date(f.at).toLocaleDateString("ru");
+  if(f.k==="music"){const a=document.createElement("audio");a.controls=true;a.preload="none";a.src=f.url;r.querySelector(".nm").appendChild(a)}
+  const o=document.createElement("a");o.href=f.url;o.target="_blank";o.rel="noopener";o.download=f.name;
+  const ob=document.createElement("button");ob.className="g";ob.textContent="Открыть";o.appendChild(ob);r.appendChild(o);
+  const d=document.createElement("button");d.className="g";d.textContent="🗑";d.title="Удалить";
+  d.onclick=async()=>{if(!confirm("Удалить «"+f.name+"»?"))return;try{await coll.doc(f.id).delete();if(f.aid)await assets.delete(f.aid)}catch(e){$("ue").textContent="Не удалось удалить"}};
+  r.appendChild(d);L.appendChild(r)}
+}
+
+async function upload(list){
+ $("ue").textContent="";
+ for(const file of list){
+  if(file.size>20971520){$("ue").textContent="«"+file.name+"» больше 20 МБ — не загружен";continue}
+  $("ue").textContent="Загрузка: "+file.name+"…";
+  try{const r=await assets.upload(file);
+   await coll.doc("f_"+Date.now()+Math.random().toString(36).slice(2,6)).set({name:file.name,size:r.sizeBytes,url:r.url,aid:r.id,k:kind(file.name,file.type||r.contentType||""),at:Date.now()});
+   $("ue").textContent=""}
+  catch(e){$("ue").textContent="Ошибка загрузки: "+(e.message||e.code||"")}}
+}
+
+$("drop").onclick=()=>$("fi").click();
+$("fi").onchange=e=>{upload([...e.target.files]);e.target.value=""};
+["dragover","dragenter"].forEach(t=>$("drop").addEventListener(t,e=>{e.preventDefault();$("drop").classList.add("over")}));
+["dragleave","drop"].forEach(t=>$("drop").addEventListener(t,e=>{e.preventDefault();$("drop").classList.remove("over")}));
+$("drop").addEventListener("drop",e=>upload([...e.dataTransfer.files]));
+$("q").oninput=render;
+$("out").onclick=()=>{sessionStorage.removeItem("vs");location.reload()};
+["u","p"].forEach(i=>$(i).addEventListener("keydown",e=>{if(e.key==="Enter")$("lb").click()}));
+
+(async()=>{
+ try{
+  const [d,a,u]=await Promise.all([claude.use("db"),claude.use("assets"),claude.use("user")]);
+  db=d;assets=a;
+  if(!db||!u){document.body.innerHTML='<div class="wrap"><div class="card">Не удалось подключить хранилище. Откройте страницу, войдя в свой аккаунт claude.ai.</div></div>';return}
+  uid=await u.id();coll=db.collection("data/users/"+uid);
+  if(!assets)$("ue").textContent="Загрузка файлов доступна только владельцу страницы.";
+  showLogin(false);
+ }catch(e){document.body.innerHTML='<div class="wrap"><div class="card">Ошибка запуска: '+(e.message||e.code||e)+'</div></div>'}
+})();
+</script>
+</body>
+</html>
